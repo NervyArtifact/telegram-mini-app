@@ -1,14 +1,5 @@
 {
   "next_id": 2,
-  "update_offset": 203304222,
-  "tasks": [
-    {
-      "id": 1,
-      "chat_id": 220177169,
-      "text": "Проверка",
-      "interval_minutes": 30,
-      "done": false,
-      "last_sent": 1783508084
-    }
-  ]
+  "update_offset": 203304224,
+  "tasks": []
 }
