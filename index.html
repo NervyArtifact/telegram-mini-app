@@ -26,6 +26,7 @@
   }
   h1 { font-size: 20px; margin: 8px 0 4px; }
   p.hint { color: var(--tg-theme-hint-color); font-size: 14px; margin: 0 0 20px; }
+  h2.section { font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--tg-theme-hint-color); margin: 20px 4px 8px; }
 
   .card {
     background: var(--tg-theme-secondary-bg-color);
@@ -70,7 +71,6 @@
     border-bottom: 1px solid rgba(0,0,0,0.06);
   }
   .todo-list li:last-child { border-bottom: none; }
-  .todo-list input[type="checkbox"] { width: 20px; height: 20px; flex: 0 0 auto; }
   .todo-list .item-text { flex: 1; }
   .todo-list .item-time {
     flex: 0 0 auto;
@@ -80,7 +80,20 @@
     border-radius: 8px;
     padding: 3px 8px;
   }
-  .todo-list li.done .item-text { text-decoration: line-through; color: var(--tg-theme-hint-color); }
+  .todo-list li.new .item-time { background: transparent; color: var(--tg-theme-link-color); }
+  .todo-list li.marked-delete .item-text { text-decoration: line-through; color: var(--tg-theme-hint-color); }
+
+  .del-btn {
+    flex: 0 0 auto;
+    border: none;
+    background: transparent;
+    color: var(--tg-theme-hint-color);
+    font-size: 18px;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+  }
+  .del-btn.active { color: #d33; background: rgba(221,51,51,0.1); }
 
   .empty { color: var(--tg-theme-hint-color); font-size: 14px; text-align: center; padding: 12px 0; }
 </style>
@@ -88,7 +101,7 @@
 <body>
 
   <h1>Список задач</h1>
-  <p class="hint">Укажите время — бот будет напоминать каждые ~15 минут, пока не отметите готово</p>
+  <p class="hint">Добавляйте новые напоминания или удаляйте текущие. Бот проверяет изменения раз в ~15 минут.</p>
 
   <div class="card">
     <div class="add-row">
@@ -98,20 +111,30 @@
     </div>
   </div>
 
+  <h2 class="section">Текущие напоминания</h2>
   <div class="card">
-    <ul class="todo-list" id="list"></ul>
-    <div class="empty" id="empty" style="display:none;">Пока пусто — добавьте первую задачу</div>
+    <ul class="todo-list" id="existingList"></ul>
+    <div class="empty" id="existingEmpty" style="display:none;">Загрузка...</div>
+  </div>
+
+  <h2 class="section" id="newSectionTitle" style="display:none;">Новые (ещё не отправлены)</h2>
+  <div class="card" id="newCard" style="display:none;">
+    <ul class="todo-list" id="newList"></ul>
   </div>
 
 <script>
   const tg = window.Telegram?.WebApp;
 
+  // ЕСЛИ переименуете/перенесёте репозиторий — поправьте эти две строки:
+  const GH_OWNER = "NervyArtifact";
+  const GH_REPO = "telegram-mini-app";
+  const TASKS_URL = `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/main/tasks.json`;
+
   // --- Инициализация SDK ---
   if (tg) {
     tg.ready();
-    tg.expand(); // развернуть на весь экран
+    tg.expand();
 
-    // Применяем цвета темы Telegram, если доступны
     const theme = tg.themeParams || {};
     const root = document.documentElement.style;
     if (theme.bg_color) root.setProperty('--tg-theme-bg-color', theme.bg_color);
@@ -123,39 +146,134 @@
     if (theme.secondary_bg_color) root.setProperty('--tg-theme-secondary-bg-color', theme.secondary_bg_color);
   }
 
+  const myUserId = tg?.initDataUnsafe?.user?.id;
+
   // --- Состояние ---
-  let items = [];
+  let newItems = [];       // { text, time } — ещё не отправленные
+  let existingTasks = [];  // загруженные из tasks.json
+  let deleteIds = new Set();
 
-  function render() {
-    const list = document.getElementById('list');
-    const empty = document.getElementById('empty');
-    list.innerHTML = '';
-    empty.style.display = items.length ? 'none' : 'block';
-
-    items.forEach((item, i) => {
-      const li = document.createElement('li');
-      if (item.done) li.classList.add('done');
-      li.innerHTML = `
-        <input type="checkbox" ${item.done ? 'checked' : ''} data-i="${i}" />
-        <span class="item-text">${item.text}</span>
-        <span class="item-time">${item.time || ''}</span>
-      `;
-      list.appendChild(li);
-    });
-
-    updateMainButton();
+  function formatExisting(t) {
+    if (t.mode === "time" && t.remind_at) {
+      const d = new Date(t.remind_at * 1000);
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mm = String(d.getMinutes()).padStart(2, "0");
+      return `${hh}:${mm}`;
+    }
+    if (t.mode === "interval" && t.interval_minutes) {
+      const m = t.interval_minutes;
+      if (m % (60 * 24) === 0) return `каждые ${m / (60 * 24)}д`;
+      if (m % 60 === 0) return `каждые ${m / 60}ч`;
+      return `каждые ${m}м`;
+    }
+    return "";
   }
+
+  async function loadExisting() {
+    const listEl = document.getElementById('existingList');
+    const emptyEl = document.getElementById('existingEmpty');
+    try {
+      const res = await fetch(TASKS_URL, { cache: "no-store" });
+      const data = await res.json();
+      existingTasks = (data.tasks || []).filter(t => {
+        if (t.done) return false;
+        if (myUserId && t.chat_id !== myUserId) return false;
+        return true;
+      });
+    } catch (err) {
+      existingTasks = [];
+      emptyEl.textContent = "Не удалось загрузить список.";
+      emptyEl.style.display = "block";
+      return;
+    }
+    renderExisting();
+  }
+
+  function renderExisting() {
+    const listEl = document.getElementById('existingList');
+    const emptyEl = document.getElementById('existingEmpty');
+    listEl.innerHTML = '';
+
+    if (existingTasks.length === 0) {
+      emptyEl.textContent = "Активных напоминаний нет";
+      emptyEl.style.display = "block";
+      return;
+    }
+    emptyEl.style.display = "none";
+
+    existingTasks.forEach((t) => {
+      const li = document.createElement('li');
+      const marked = deleteIds.has(t.id);
+      if (marked) li.classList.add('marked-delete');
+      li.innerHTML = `
+        <span class="item-text">${t.text}</span>
+        <span class="item-time">${formatExisting(t)}</span>
+        <button class="del-btn ${marked ? 'active' : ''}" data-id="${t.id}" aria-label="Удалить">🗑</button>
+      `;
+      listEl.appendChild(li);
+    });
+  }
+
+  document.getElementById('existingList').addEventListener('click', (e) => {
+    const btn = e.target.closest('.del-btn');
+    if (!btn) return;
+    const id = Number(btn.dataset.id);
+    if (deleteIds.has(id)) deleteIds.delete(id);
+    else deleteIds.add(id);
+    tg?.HapticFeedback?.impactOccurred('light');
+    renderExisting();
+    updateMainButton();
+  });
+
+  function renderNew() {
+    const listEl = document.getElementById('newList');
+    const card = document.getElementById('newCard');
+    const title = document.getElementById('newSectionTitle');
+    listEl.innerHTML = '';
+
+    if (newItems.length === 0) {
+      card.style.display = 'none';
+      title.style.display = 'none';
+      return;
+    }
+    card.style.display = 'block';
+    title.style.display = 'block';
+
+    newItems.forEach((item, i) => {
+      const li = document.createElement('li');
+      li.classList.add('new');
+      li.innerHTML = `
+        <span class="item-text">${item.text}</span>
+        <span class="item-time">${item.time}</span>
+        <button class="del-btn" data-i="${i}" aria-label="Убрать">✕</button>
+      `;
+      listEl.appendChild(li);
+    });
+  }
+
+  document.getElementById('newList').addEventListener('click', (e) => {
+    const btn = e.target.closest('.del-btn');
+    if (!btn) return;
+    const i = Number(btn.dataset.i);
+    newItems.splice(i, 1);
+    renderNew();
+    updateMainButton();
+  });
 
   function updateMainButton() {
     if (!tg) return;
-    const doneCount = items.filter(i => i.done).length;
+    const addCount = newItems.length;
+    const delCount = deleteIds.size;
 
-    if (items.length === 0) {
+    if (addCount === 0 && delCount === 0) {
       tg.MainButton.hide();
       return;
     }
 
-    tg.MainButton.setText(`Отправить боту (${doneCount}/${items.length} выполнено)`);
+    const parts = [];
+    if (addCount) parts.push(`добавить ${addCount}`);
+    if (delCount) parts.push(`удалить ${delCount}`);
+    tg.MainButton.setText(`Отправить боту (${parts.join(", ")})`);
     tg.MainButton.show();
   }
 
@@ -171,11 +289,12 @@
       return;
     }
 
-    items.push({ text, time, done: false });
+    newItems.push({ text, time });
     textInput.value = '';
     timeInput.value = '';
     tg?.HapticFeedback?.impactOccurred('light');
-    render();
+    renderNew();
+    updateMainButton();
   }
 
   document.getElementById('addBtn').addEventListener('click', addItem);
@@ -186,25 +305,19 @@
     if (e.key === 'Enter') addItem();
   });
 
-  document.getElementById('list').addEventListener('change', (e) => {
-    if (e.target.matches('input[type="checkbox"]')) {
-      const i = Number(e.target.dataset.i);
-      items[i].done = e.target.checked;
-      tg?.HapticFeedback?.impactOccurred('light');
-      render();
-    }
-  });
-
   // --- Отправка данных обратно боту ---
   if (tg) {
     tg.MainButton.onClick(() => {
-      // sendData закрывает приложение и передаёт JSON боту
-      // (бот получает это в update.message.web_app_data.data)
-      tg.sendData(JSON.stringify({ items }));
+      tg.sendData(JSON.stringify({
+        new_items: newItems,
+        delete_ids: Array.from(deleteIds),
+      }));
     });
   }
 
-  render();
+  loadExisting();
+  renderNew();
+  updateMainButton();
 </script>
 </body>
 </html>
