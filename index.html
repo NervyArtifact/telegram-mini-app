@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Мини-приложение</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --tg-theme-bg-color: #ffffff;
+    --tg-theme-text-color: #222222;
+    --tg-theme-hint-color: #999999;
+    --tg-theme-link-color: #2481cc;
+    --tg-theme-button-color: #2481cc;
+    --tg-theme-button-text-color: #ffffff;
+    --tg-theme-secondary-bg-color: #f0f0f0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--tg-theme-bg-color);
+    color: var(--tg-theme-text-color);
+    padding: 16px;
+    padding-bottom: 96px; /* место под MainButton */
+  }
+  h1 { font-size: 20px; margin: 8px 0 4px; }
+  p.hint { color: var(--tg-theme-hint-color); font-size: 14px; margin: 0 0 20px; }
+
+  .card {
+    background: var(--tg-theme-secondary-bg-color);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+  }
+
+  .field {
+    width: 100%;
+    border: none;
+    background: var(--tg-theme-bg-color);
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 16px;
+    color: var(--tg-theme-text-color);
+    margin-top: 8px;
+  }
+  .field:focus { outline: 2px solid var(--tg-theme-link-color); }
+
+  .row { display: flex; justify-content: space-between; align-items: center; }
+
+  .todo-list { list-style: none; margin: 0; padding: 0; }
+  .todo-list li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+  }
+  .todo-list li:last-child { border-bottom: none; }
+  .todo-list input[type="checkbox"] { width: 20px; height: 20px; }
+  .todo-list li.done span { text-decoration: line-through; color: var(--tg-theme-hint-color); }
+
+  .empty { color: var(--tg-theme-hint-color); font-size: 14px; text-align: center; padding: 12px 0; }
+</style>
+</head>
+<body>
+
+  <h1>Список задач</h1>
+  <p class="hint">Пример мини-приложения: тема, MainButton, отправка данных боту</p>
+
+  <div class="card">
+    <input class="field" id="newItem" placeholder="Новая задача..." />
+  </div>
+
+  <div class="card">
+    <ul class="todo-list" id="list"></ul>
+    <div class="empty" id="empty" style="display:none;">Пока пусто — добавьте первую задачу</div>
+  </div>
+
+<script>
+  const tg = window.Telegram?.WebApp;
+
+  // --- Инициализация SDK ---
+  if (tg) {
+    tg.ready();
+    tg.expand(); // развернуть на весь экран
+
+    // Применяем цвета темы Telegram, если доступны
+    const theme = tg.themeParams || {};
+    const root = document.documentElement.style;
+    if (theme.bg_color) root.setProperty('--tg-theme-bg-color', theme.bg_color);
+    if (theme.text_color) root.setProperty('--tg-theme-text-color', theme.text_color);
+    if (theme.hint_color) root.setProperty('--tg-theme-hint-color', theme.hint_color);
+    if (theme.link_color) root.setProperty('--tg-theme-link-color', theme.link_color);
+    if (theme.button_color) root.setProperty('--tg-theme-button-color', theme.button_color);
+    if (theme.button_text_color) root.setProperty('--tg-theme-button-text-color', theme.button_text_color);
+    if (theme.secondary_bg_color) root.setProperty('--tg-theme-secondary-bg-color', theme.secondary_bg_color);
+  }
+
+  // --- Состояние ---
+  let items = [];
+
+  function render() {
+    const list = document.getElementById('list');
+    const empty = document.getElementById('empty');
+    list.innerHTML = '';
+    empty.style.display = items.length ? 'none' : 'block';
+
+    items.forEach((item, i) => {
+      const li = document.createElement('li');
+      if (item.done) li.classList.add('done');
+      li.innerHTML = `
+        <input type="checkbox" ${item.done ? 'checked' : ''} data-i="${i}" />
+        <span>${item.text}</span>
+      `;
+      list.appendChild(li);
+    });
+
+    // Показать MainButton только если есть незавершённые задачи
+    updateMainButton();
+  }
+
+  function updateMainButton() {
+    if (!tg) return;
+    const doneCount = items.filter(i => i.done).length;
+
+    if (items.length === 0) {
+      tg.MainButton.hide();
+      return;
+    }
+
+    tg.MainButton.setText(`Отправить боту (${doneCount}/${items.length} выполнено)`);
+    tg.MainButton.show();
+  }
+
+  document.getElementById('newItem').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.value.trim()) {
+      items.push({ text: e.target.value.trim(), done: false });
+      e.target.value = '';
+      tg?.HapticFeedback?.impactOccurred('light');
+      render();
+    }
+  });
+
+  document.getElementById('list').addEventListener('change', (e) => {
+    if (e.target.matches('input[type="checkbox"]')) {
+      const i = Number(e.target.dataset.i);
+      items[i].done = e.target.checked;
+      tg?.HapticFeedback?.impactOccurred('light');
+      render();
+    }
+  });
+
+  // --- Отправка данных обратно боту ---
+  if (tg) {
+    tg.MainButton.onClick(() => {
+      // sendData закрывает приложение и передаёт JSON боту
+      // (бот получает это в update.message.web_app_data.data)
+      tg.sendData(JSON.stringify({ items }));
+    });
+  }
+
+  render();
+</script>
+</body>
+</html>
