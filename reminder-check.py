@@ -251,11 +251,10 @@ def handle_web_app_data(state, chat_id: int, raw_data: str):
     except (json.JSONDecodeError, TypeError):
         return
 
-    items = payload.get("items", [])
+    # --- добавление новых задач ---
+    new_items = payload.get("new_items", [])
     created = []
-    for item in items:
-        if item.get("done"):
-            continue  # уже выполненные из мини-приложения не превращаем в напоминания
+    for item in new_items:
         item_text = (item.get("text") or "").strip()
         item_time = item.get("time") or ""
         if not item_text or not item_time:
@@ -264,13 +263,32 @@ def handle_web_app_data(state, chat_id: int, raw_data: str):
         if task_id is not None:
             created.append((task_id, item_text, item_time))
 
+    # --- удаление отмеченных задач (только свои, по chat_id) ---
+    delete_ids = set(payload.get("delete_ids", []))
+    removed = []
+    if delete_ids:
+        remaining = []
+        for t in state["tasks"]:
+            if t["id"] in delete_ids and t["chat_id"] == chat_id:
+                removed.append((t["id"], t["text"]))
+                continue
+            remaining.append(t)
+        state["tasks"] = remaining
+
+    lines = []
     if created:
-        lines = ["Добавил из мини-приложения:"]
+        lines.append("Добавил из мини-приложения:")
         for task_id, item_text, item_time in created:
             lines.append(f"#{task_id} — {item_text} (на {item_time})")
+    if removed:
+        lines.append("Удалил:")
+        for task_id, item_text in removed:
+            lines.append(f"#{task_id} — {item_text}")
+
+    if lines:
         send_message(chat_id, "\n".join(lines))
     else:
-        send_message(chat_id, "Из мини-приложения не пришло новых задач с временем и текстом.")
+        send_message(chat_id, "Из мини-приложения не пришло изменений (ни новых задач, ни удалений).")
 
 
 # ---------- Обработка входящих апдейтов ----------
