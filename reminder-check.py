@@ -38,6 +38,7 @@ except ImportError:  # на случай очень старого Python
 STATE_PATH = os.environ.get("STATE_PATH", "tasks.json")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 TZ_NAME = os.environ.get("TZ_NAME", "Asia/Tashkent")
+MINI_APP_URL = os.environ.get("MINI_APP_URL", "https://nervyartifact.github.io/telegram-mini-app/")
 API_BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 INTERVAL_RE = re.compile(r"^(\d+)\s*([mhd])$", re.IGNORECASE)
@@ -49,7 +50,9 @@ HELP_TEXT = (
     "Добавить задачу с интервалом:\n/add Позвонить маме 2h\n"
     "Форматы интервала: 30m (минуты), 2h (часы), 1d (дни)\n\n"
     "Задачи с конкретным временем (например «на 16:40») добавляются "
-    "через мини-приложение — там есть поле выбора времени.\n\n"
+    "через мини-приложение — команда /tasks открывает его в режиме,\n"
+    "где реально можно отправить изменения (кнопка меню слева — только "
+    "для просмотра, отправлять через неё нельзя, так устроен Telegram).\n\n"
     "Другие команды: /list, /done <id>\n\n"
     "⚠️ Я проверяю сообщения не мгновенно, а раз в ~15 минут — "
     "это бесплатная версия без постоянного сервера."
@@ -94,13 +97,14 @@ def get_updates(offset: int):
     return result.get("result", [])
 
 
-def send_message(chat_id: int, text: str, with_done_button_for: int | None = None):
+def send_message(chat_id: int, text: str, with_done_button_for: int | None = None, reply_markup: dict | None = None):
     params = {"chat_id": chat_id, "text": text}
     if with_done_button_for is not None:
-        keyboard = {
+        reply_markup = {
             "inline_keyboard": [[{"text": "✅ Готово", "callback_data": f"done:{with_done_button_for}"}]]
         }
-        params["reply_markup"] = json.dumps(keyboard)
+    if reply_markup is not None:
+        params["reply_markup"] = json.dumps(reply_markup)
     api_call("sendMessage", params)
 
 
@@ -179,6 +183,22 @@ def handle_command(state, chat_id: int, text: str):
 
     if text in ("/start", "/help"):
         send_message(chat_id, HELP_TEXT)
+        return
+
+    if text == "/tasks":
+        # Важно: sendData() из мини-приложения работает ТОЛЬКО если оно
+        # открыто через такую keyboard-кнопку (или inline-кнопку) — через
+        # обычную Menu Button из BotFather отправка данных боту не работает,
+        # это ограничение самого Telegram, не наше.
+        keyboard = {
+            "keyboard": [[{"text": "📝 Список задач", "web_app": {"url": MINI_APP_URL}}]],
+            "resize_keyboard": True,
+        }
+        send_message(
+            chat_id,
+            "Открой через эту кнопку — только через неё можно отправлять изменения.",
+            reply_markup=keyboard,
+        )
         return
 
     if text.startswith("/add"):
