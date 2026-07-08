@@ -17,6 +17,15 @@
       "interval_minutes": null,
       "remind_at": 1783514460,
       "done": 1
+    },
+    {
+      "id": 3,
+      "chat_id": 220177169,
+      "text": "Проверка",
+      "mode": "time",
+      "interval_minutes": null,
+      "remind_at": 1783517040,
+      "done": 0
     }
   ]
 }
