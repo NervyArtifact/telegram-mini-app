@@ -1,5 +1,22 @@
 {
-  "next_id": 2,
-  "update_offset": 203304224,
-  "tasks": []
+  "tasks": [
+    {
+      "id": 1,
+      "chat_id": 220177169,
+      "text": "ывффы",
+      "mode": "time",
+      "interval_minutes": null,
+      "remind_at": 1783514400,
+      "done": 1
+    },
+    {
+      "id": 2,
+      "chat_id": 220177169,
+      "text": "выфвфы",
+      "mode": "time",
+      "interval_minutes": null,
+      "remind_at": 1783514460,
+      "done": 1
+    }
+  ]
 }
