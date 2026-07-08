@@ -280,26 +280,37 @@ def process_updates(state):
     for update in updates:
         state["update_offset"] = update["update_id"] + 1
 
-        if "message" in update:
-            msg = update["message"]
-            chat_id = msg["chat"]["id"]
-            if "web_app_data" in msg:
-                handle_web_app_data(state, chat_id, msg["web_app_data"].get("data", ""))
-            elif "text" in msg:
-                handle_command(state, chat_id, msg["text"])
+        try:
+            if "message" in update:
+                msg = update["message"]
+                chat_id = msg["chat"]["id"]
+                if "web_app_data" in msg:
+                    handle_web_app_data(state, chat_id, msg["web_app_data"].get("data", ""))
+                elif "text" in msg:
+                    handle_command(state, chat_id, msg["text"])
 
-        elif "callback_query" in update:
-            cq = update["callback_query"]
-            data = cq.get("data", "")
-            if data.startswith("done:"):
-                task_id = int(data.split(":")[1])
-                task = find_task(state, task_id)
-                chat_id = cq["message"]["chat"]["id"]
-                message_id = cq["message"]["message_id"]
-                if task and not task["done"]:
-                    task["done"] = True
-                    edit_message_text(chat_id, message_id, f"{cq['message']['text']}\n\n✅ Выполнено")
-                answer_callback_query(cq["id"])
+            elif "callback_query" in update:
+                cq = update["callback_query"]
+                data = cq.get("data", "")
+                if data.startswith("done:"):
+                    task_id = int(data.split(":")[1])
+                    task = find_task(state, task_id)
+                    chat_id = cq["message"]["chat"]["id"]
+                    message_id = cq["message"]["message_id"]
+                    if task and not task["done"]:
+                        task["done"] = True
+                        try:
+                            edit_message_text(chat_id, message_id, f"{cq['message']['text']}\n\n✅ Выполнено")
+                        except Exception as exc:
+                            print(f"Warning: editMessageText failed for update {update.get('update_id')}: {exc}")
+                    try:
+                        answer_callback_query(cq["id"])
+                    except Exception as exc:
+                        print(f"Warning: answerCallbackQuery failed for update {update.get('update_id')}: {exc}")
+        except Exception as exc:
+            # Одна проблемная запись (устаревший callback, странный формат и т.п.)
+            # не должна ронять весь запуск — пропускаем и идём дальше.
+            print(f"Warning: failed to process update {update.get('update_id')}: {exc}")
 
 
 # ---------- Отправка просроченных напоминаний ----------
