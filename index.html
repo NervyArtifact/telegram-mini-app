@@ -34,19 +34,32 @@
     margin-bottom: 12px;
   }
 
+  .add-row { display: flex; gap: 8px; align-items: center; }
+
   .field {
-    width: 100%;
     border: none;
     background: var(--tg-theme-bg-color);
     border-radius: 10px;
     padding: 12px;
     font-size: 16px;
     color: var(--tg-theme-text-color);
-    margin-top: 8px;
   }
   .field:focus { outline: 2px solid var(--tg-theme-link-color); }
 
-  .row { display: flex; justify-content: space-between; align-items: center; }
+  #newItem { flex: 1; min-width: 0; }
+  #newTime { flex: 0 0 auto; width: 108px; }
+
+  .add-btn {
+    flex: 0 0 auto;
+    border: none;
+    border-radius: 10px;
+    background: var(--tg-theme-button-color);
+    color: var(--tg-theme-button-text-color);
+    font-size: 20px;
+    line-height: 1;
+    width: 44px;
+    height: 44px;
+  }
 
   .todo-list { list-style: none; margin: 0; padding: 0; }
   .todo-list li {
@@ -57,8 +70,17 @@
     border-bottom: 1px solid rgba(0,0,0,0.06);
   }
   .todo-list li:last-child { border-bottom: none; }
-  .todo-list input[type="checkbox"] { width: 20px; height: 20px; }
-  .todo-list li.done span { text-decoration: line-through; color: var(--tg-theme-hint-color); }
+  .todo-list input[type="checkbox"] { width: 20px; height: 20px; flex: 0 0 auto; }
+  .todo-list .item-text { flex: 1; }
+  .todo-list .item-time {
+    flex: 0 0 auto;
+    font-size: 13px;
+    color: var(--tg-theme-hint-color);
+    background: var(--tg-theme-bg-color);
+    border-radius: 8px;
+    padding: 3px 8px;
+  }
+  .todo-list li.done .item-text { text-decoration: line-through; color: var(--tg-theme-hint-color); }
 
   .empty { color: var(--tg-theme-hint-color); font-size: 14px; text-align: center; padding: 12px 0; }
 </style>
@@ -66,10 +88,14 @@
 <body>
 
   <h1>Список задач</h1>
-  <p class="hint">Пример мини-приложения: тема, MainButton, отправка данных боту</p>
+  <p class="hint">Укажите время — бот будет напоминать каждые ~15 минут, пока не отметите готово</p>
 
   <div class="card">
-    <input class="field" id="newItem" placeholder="Новая задача..." />
+    <div class="add-row">
+      <input class="field" id="newItem" placeholder="Новая задача..." />
+      <input class="field" id="newTime" type="time" />
+      <button class="add-btn" id="addBtn" aria-label="Добавить">+</button>
+    </div>
   </div>
 
   <div class="card">
@@ -111,12 +137,12 @@
       if (item.done) li.classList.add('done');
       li.innerHTML = `
         <input type="checkbox" ${item.done ? 'checked' : ''} data-i="${i}" />
-        <span>${item.text}</span>
+        <span class="item-text">${item.text}</span>
+        <span class="item-time">${item.time || ''}</span>
       `;
       list.appendChild(li);
     });
 
-    // Показать MainButton только если есть незавершённые задачи
     updateMainButton();
   }
 
@@ -133,13 +159,31 @@
     tg.MainButton.show();
   }
 
-  document.getElementById('newItem').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && e.target.value.trim()) {
-      items.push({ text: e.target.value.trim(), done: false });
-      e.target.value = '';
-      tg?.HapticFeedback?.impactOccurred('light');
-      render();
+  function addItem() {
+    const textInput = document.getElementById('newItem');
+    const timeInput = document.getElementById('newTime');
+    const text = textInput.value.trim();
+    const time = timeInput.value;
+
+    if (!text) return;
+    if (!time) {
+      tg?.showAlert ? tg.showAlert('Укажите время напоминания') : alert('Укажите время напоминания');
+      return;
     }
+
+    items.push({ text, time, done: false });
+    textInput.value = '';
+    timeInput.value = '';
+    tg?.HapticFeedback?.impactOccurred('light');
+    render();
+  }
+
+  document.getElementById('addBtn').addEventListener('click', addItem);
+  document.getElementById('newItem').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') addItem();
+  });
+  document.getElementById('newTime').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') addItem();
   });
 
   document.getElementById('list').addEventListener('change', (e) => {
