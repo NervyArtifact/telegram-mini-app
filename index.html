@@ -297,7 +297,13 @@
 
   const GH_OWNER = "NervyArtifact";
   const GH_REPO = "telegram-mini-app";
-  const TASKS_URL = `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/main/tasks.json`;
+  const TASKS_API_URL = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/tasks.json`;
+
+  function decodeBase64Utf8(b64) {
+    const binary = atob(b64.replace(/\n/g, ''));
+    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+    return new TextDecoder('utf-8').decode(bytes);
+  }
 
   if (tg) {
     tg.ready();
@@ -360,8 +366,13 @@
     emptyEl.style.display = 'none';
 
     try {
-      const res = await fetch(`${TASKS_URL}?_=${Date.now()}`, { cache: "no-store" });
-      const data = await res.json();
+      const res = await fetch(`${TASKS_API_URL}?ref=main&_=${Date.now()}`, {
+        cache: "no-store",
+        headers: { "Accept": "application/vnd.github.v3+json" },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const data = JSON.parse(decodeBase64Utf8(json.content));
       existingTasks = (data.tasks || []).filter(t => {
         if (t.done) return false;
         if (myUserId && t.chat_id !== myUserId) return false;
