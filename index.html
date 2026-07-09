@@ -373,7 +373,9 @@
       // чтобы случайно не показать чужие напоминания.
       skeleton.style.display = 'none';
       existingTasks = [];
-      emptyText.textContent = "Не удалось определить пользователя";
+      // ВРЕМЕННО (диагностика): показываем реальный URL, который получила
+      // страница, чтобы понять, обрезает ли Telegram query-параметры.
+      emptyText.textContent = "DEBUG: " + window.location.href;
       emptyEl.style.display = "flex";
       return;
     }
