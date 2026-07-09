@@ -106,8 +106,8 @@
     box-shadow: 0 0 0 2px var(--tg-theme-link-color);
   }
 
-  #newItem { flex: 1; min-width: 0; }
-  #newTime { flex: 0 0 auto; width: 118px; }
+  #newItem { width: 100%; margin-bottom: var(--space-2); }
+  #newDate, #newTime { flex: 1; min-width: 0; }
 
   .icon-btn {
     flex: 0 0 auto;
@@ -260,8 +260,9 @@
   <p class="hint">Укажите текст и время — бот напомнит начиная с этого момента и будет повторять, пока не отметите готово в чате.</p>
 
   <div class="card">
+    <input class="field" id="newItem" placeholder="Новая задача..." aria-label="Текст напоминания" />
     <div class="add-row">
-      <input class="field" id="newItem" placeholder="Новая задача..." aria-label="Текст напоминания" />
+      <input class="field" id="newDate" type="date" aria-label="Дата напоминания" />
       <input class="field" id="newTime" type="time" aria-label="Время напоминания" />
       <button class="icon-btn add-btn" id="addBtn" aria-label="Добавить напоминание">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -325,12 +326,20 @@
   const trashIcon = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   const closeIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
 
+  function pad2(n) { return String(n).padStart(2, "0"); }
+
+  function isToday(d) {
+    const now = new Date();
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  }
+
   function formatExisting(t) {
     if (t.mode === "time" && t.remind_at) {
       const d = new Date(t.remind_at * 1000);
-      const hh = String(d.getHours()).padStart(2, "0");
-      const mm = String(d.getMinutes()).padStart(2, "0");
-      return { icon: clockIcon, label: `с ${hh}:${mm}` };
+      const hh = pad2(d.getHours());
+      const mm = pad2(d.getMinutes());
+      const dateLabel = isToday(d) ? "сегодня" : `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}`;
+      return { icon: clockIcon, label: `${dateLabel}, ${hh}:${mm}` };
     }
     if (t.mode === "interval" && t.interval_minutes) {
       const m = t.interval_minutes;
@@ -433,11 +442,13 @@
 
     newItems.forEach((item, i) => {
       const li = document.createElement('li');
+      const d = new Date(`${item.date}T${item.time}`);
+      const dateLabel = isToday(d) ? "сегодня" : `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}`;
       li.innerHTML = `
         <span class="item-icon is-new">${clockIcon}</span>
         <span class="item-body">
           <span class="item-text">${escapeHtml(item.text)}</span>
-          <span class="item-meta">на ${item.time}</span>
+          <span class="item-meta">${dateLabel}, ${item.time}</span>
         </span>
         <button class="del-btn active" data-i="${i}" aria-label="Убрать «${escapeHtml(item.text)}» из списка">${closeIcon}</button>
       `;
@@ -471,10 +482,20 @@
     tg.MainButton.show();
   }
 
+  function todayLocalISO() {
+    const now = new Date();
+    return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+  }
+
+  document.getElementById('newDate').value = todayLocalISO();
+  document.getElementById('newDate').min = todayLocalISO();
+
   function addItem() {
     const textInput = document.getElementById('newItem');
+    const dateInput = document.getElementById('newDate');
     const timeInput = document.getElementById('newTime');
     const text = textInput.value.trim();
+    const date = dateInput.value || todayLocalISO();
     const time = timeInput.value;
 
     if (!text) {
@@ -487,9 +508,10 @@
       return;
     }
 
-    newItems.push({ text, time });
+    newItems.push({ text, date, time });
     textInput.value = '';
     timeInput.value = '';
+    dateInput.value = todayLocalISO();
     tg?.HapticFeedback?.impactOccurred('light');
     renderNew();
     updateMainButton();
@@ -507,7 +529,7 @@
   if (tg) {
     tg.MainButton.onClick(() => {
       tg.sendData(JSON.stringify({
-        new_items: newItems,
+        new_items: newItems.map(i => ({ text: i.text, datetime: `${i.date}T${i.time}` })),
         delete_ids: Array.from(deleteIds),
       }));
     });
