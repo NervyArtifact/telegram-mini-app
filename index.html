@@ -316,7 +316,15 @@
     if (theme.destructive_text_color) root.setProperty('--tg-theme-destructive-text-color', theme.destructive_text_color);
   }
 
-  const myUserId = tg?.initDataUnsafe?.user?.id;
+  // KeyboardButton web_app (через который открывается это приложение) НЕ
+  // передаёт initData/initDataUnsafe.user — это ограничение платформы
+  // Telegram (initData доступен только у Web App из меню/inline-кнопки, а
+  // там не работает sendData). Поэтому бот сам передаёт chat_id прямо в
+  // URL кнопки — читаем его отсюда. initDataUnsafe.user — просто запасной
+  // вариант на случай другого способа открытия.
+  const urlParams = new URLSearchParams(window.location.search);
+  const uidFromUrl = urlParams.get('uid');
+  const myUserId = uidFromUrl || tg?.initDataUnsafe?.user?.id;
 
   let newItems = [];
   let existingTasks = [];
