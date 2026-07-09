@@ -62,6 +62,15 @@
       "interval_minutes": null,
       "remind_at": 1783568940,
       "done": 0
+    },
+    {
+      "id": 8,
+      "chat_id": 220177169,
+      "text": "Воволв",
+      "mode": "time",
+      "interval_minutes": null,
+      "remind_at": 1783566060,
+      "done": 0
     }
   ]
 }
