@@ -333,7 +333,6 @@
 
   <h1>Новое напоминание</h1>
   <p class="hint">Укажите текст и время — бот напомнит начиная с этого момента и будет повторять, пока не отметите готово в чате.</p>
-  <p id="debugInfo" style="font-size:11px;color:#e5484d;word-break:break-all;background:#fff0f0;padding:8px;border-radius:8px;"></p>
 
   <div class="card">
     <div class="edit-banner" id="editBanner" style="display:none;">
@@ -412,10 +411,6 @@
   const lastPart = pathParts[pathParts.length - 1];
   const uidFromPath = lastPart && /^\d+$/.test(lastPart) ? lastPart : null;
   const myUserId = uidFromPath || tg?.initDataUnsafe?.user?.id;
-
-  // ВРЕМЕННЫЙ ДЕБАГ — удалить после диагностики
-  document.getElementById('debugInfo').textContent =
-    `DEBUG path=${window.location.pathname} uidFromPath=${uidFromPath} tgUser=${tg?.initDataUnsafe?.user?.id} myUserId=${myUserId}`;
 
   let newItems = [];
   let pendingEdits = new Map(); // id -> { id, text, schedule }
