@@ -247,10 +247,85 @@
     100% { background-position: 0 50%; }
   }
 
+  #scheduleType { width: 100%; margin-bottom: var(--space-2); }
+
+  .weekday-picker {
+    display: flex;
+    gap: 6px;
+    margin-bottom: var(--space-2);
+  }
+
+  .weekday-btn {
+    flex: 1;
+    height: 36px;
+    border: none;
+    border-radius: var(--radius-md);
+    background: var(--tg-theme-bg-color);
+    color: var(--tg-theme-text-color);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+  }
+
+  .weekday-btn.active {
+    background: var(--tg-theme-button-color);
+    color: var(--tg-theme-button-text-color);
+  }
+
+  .edit-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    background: color-mix(in srgb, var(--tg-theme-link-color) 12%, transparent);
+    color: var(--tg-theme-link-color);
+    font-size: 13px;
+    font-weight: 500;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-2);
+  }
+
+  .edit-banner button {
+    border: none;
+    background: transparent;
+    color: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0;
+  }
+
+  .edit-btn {
+    flex: 0 0 auto;
+    border: none;
+    background: transparent;
+    color: var(--tg-theme-hint-color);
+    width: 36px;
+    height: 36px;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+  }
+
+  .edit-btn:active { transform: scale(0.93); }
+
+  li.marked-edit .item-text,
+  li.marked-edit .item-meta {
+    color: var(--tg-theme-link-color);
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .todo-list li { animation: none; }
     .skeleton-row { animation: none; }
-    .icon-btn, .del-btn { transition: none; }
+    .icon-btn, .del-btn, .edit-btn { transition: none; }
   }
 </style>
 </head>
@@ -260,7 +335,17 @@
   <p class="hint">Укажите текст и время — бот напомнит начиная с этого момента и будет повторять, пока не отметите готово в чате.</p>
 
   <div class="card">
+    <div class="edit-banner" id="editBanner" style="display:none;">
+      <span>✏️ Редактирование напоминания</span>
+      <button type="button" id="cancelEditBtn">Отменить</button>
+    </div>
     <input class="field" id="newItem" placeholder="Новая задача..." aria-label="Текст напоминания" />
+    <select class="field" id="scheduleType" aria-label="Тип напоминания">
+      <option value="once">Один раз</option>
+      <option value="daily">Каждый день</option>
+      <option value="weekly">По дням недели</option>
+    </select>
+    <div class="weekday-picker" id="weekdayPicker" style="display:none;"></div>
     <div class="add-row">
       <input class="field" id="newDate" type="date" aria-label="Дата напоминания" />
       <input class="field" id="newTime" type="time" aria-label="Время напоминания" />
@@ -328,13 +413,19 @@
   const myUserId = uidFromPath || tg?.initDataUnsafe?.user?.id;
 
   let newItems = [];
+  let pendingEdits = new Map(); // id -> { id, text, schedule }
+  let editingId = null;
   let existingTasks = [];
   let deleteIds = new Set();
+
+  const WEEKDAY_SHORT = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"];
+  let selectedWeekday = 0;
 
   const clockIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   const repeatIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M17 2l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   const trashIcon = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   const closeIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+  const editIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
   function pad2(n) { return String(n).padStart(2, "0"); }
 
@@ -359,7 +450,25 @@
       else label = `каждые ${m} мин.`;
       return { icon: repeatIcon, label };
     }
+    if (t.mode === "recurring") {
+      const hh = pad2(t.daily_hour);
+      const mm = pad2(t.daily_minute);
+      if (t.weekday === null || t.weekday === undefined) {
+        return { icon: repeatIcon, label: `каждый день, ${hh}:${mm}` };
+      }
+      return { icon: repeatIcon, label: `по ${WEEKDAY_SHORT[t.weekday]}, ${hh}:${mm}` };
+    }
     return { icon: clockIcon, label: "" };
+  }
+
+  function scheduleLabel(sched) {
+    if (sched.kind === "once") {
+      const d = new Date(`${sched.date}T${sched.time}`);
+      const dateLabel = isToday(d) ? "сегодня" : `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}`;
+      return `${dateLabel}, ${sched.time}`;
+    }
+    if (sched.kind === "daily") return `каждый день, ${sched.time}`;
+    return `по ${WEEKDAY_SHORT[sched.weekday]}, ${sched.time}`;
   }
 
   async function loadExisting() {
@@ -415,16 +524,23 @@
 
     existingTasks.forEach((t) => {
       const meta = formatExisting(t);
-      const marked = deleteIds.has(t.id);
+      const markedDelete = deleteIds.has(t.id);
+      const markedEdit = pendingEdits.has(t.id);
       const li = document.createElement('li');
-      if (marked) li.classList.add('marked-delete');
+      if (markedDelete) li.classList.add('marked-delete');
+      if (markedEdit) li.classList.add('marked-edit');
+      const editBtnHtml = t.mode !== 'interval'
+        ? `<button class="edit-btn" data-id="${t.id}" aria-label="Изменить «${escapeHtml(t.text)}»">${editIcon}</button>`
+        : '';
+      const metaLabel = markedEdit ? `${meta.label} · изменение добавлено ниже` : meta.label;
       li.innerHTML = `
         <span class="item-icon">${meta.icon}</span>
         <span class="item-body">
           <span class="item-text">${escapeHtml(t.text)}</span>
-          <span class="item-meta">${meta.label}</span>
+          <span class="item-meta">${metaLabel}</span>
         </span>
-        <button class="del-btn ${marked ? 'active' : ''}" data-id="${t.id}" aria-label="Удалить напоминание «${escapeHtml(t.text)}»">${trashIcon}</button>
+        ${editBtnHtml}
+        <button class="del-btn ${markedDelete ? 'active' : ''}" data-id="${t.id}" aria-label="Удалить напоминание «${escapeHtml(t.text)}»">${trashIcon}</button>
       `;
       listEl.appendChild(li);
     });
@@ -437,6 +553,13 @@
   }
 
   document.getElementById('existingList').addEventListener('click', (e) => {
+    const editBtn = e.target.closest('.edit-btn');
+    if (editBtn) {
+      const id = Number(editBtn.dataset.id);
+      const t = existingTasks.find((x) => x.id === id);
+      if (t) startEdit(t);
+      return;
+    }
     const btn = e.target.closest('.del-btn');
     if (!btn) return;
     const id = Number(btn.dataset.id);
@@ -453,7 +576,8 @@
     const title = document.getElementById('newSectionTitle');
     listEl.innerHTML = '';
 
-    if (newItems.length === 0) {
+    const totalCount = newItems.length + pendingEdits.size;
+    if (totalCount === 0) {
       card.style.display = 'none';
       title.style.display = 'none';
       return;
@@ -463,15 +587,29 @@
 
     newItems.forEach((item, i) => {
       const li = document.createElement('li');
-      const d = new Date(`${item.date}T${item.time}`);
-      const dateLabel = isToday(d) ? "сегодня" : `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}`;
+      const label = scheduleLabel(item.schedule);
+      const icon = item.schedule.kind === 'once' ? clockIcon : repeatIcon;
       li.innerHTML = `
-        <span class="item-icon is-new">${clockIcon}</span>
+        <span class="item-icon is-new">${icon}</span>
         <span class="item-body">
           <span class="item-text">${escapeHtml(item.text)}</span>
-          <span class="item-meta">${dateLabel}, ${item.time}</span>
+          <span class="item-meta">${label}</span>
         </span>
-        <button class="del-btn active" data-i="${i}" aria-label="Убрать «${escapeHtml(item.text)}» из списка">${closeIcon}</button>
+        <button class="del-btn active" data-kind="new" data-i="${i}" aria-label="Убрать «${escapeHtml(item.text)}» из списка">${closeIcon}</button>
+      `;
+      listEl.appendChild(li);
+    });
+
+    pendingEdits.forEach((item, id) => {
+      const li = document.createElement('li');
+      const label = scheduleLabel(item.schedule);
+      li.innerHTML = `
+        <span class="item-icon is-new">${editIcon}</span>
+        <span class="item-body">
+          <span class="item-text">${escapeHtml(item.text)}</span>
+          <span class="item-meta">изменение — ${label}</span>
+        </span>
+        <button class="del-btn active" data-kind="edit" data-id="${id}" aria-label="Отменить изменение">${closeIcon}</button>
       `;
       listEl.appendChild(li);
     });
@@ -480,8 +618,13 @@
   document.getElementById('newList').addEventListener('click', (e) => {
     const btn = e.target.closest('.del-btn');
     if (!btn) return;
-    const i = Number(btn.dataset.i);
-    newItems.splice(i, 1);
+    if (btn.dataset.kind === 'edit') {
+      pendingEdits.delete(Number(btn.dataset.id));
+      renderExisting();
+    } else {
+      const i = Number(btn.dataset.i);
+      newItems.splice(i, 1);
+    }
     renderNew();
     updateMainButton();
   });
@@ -489,15 +632,17 @@
   function updateMainButton() {
     if (!tg) return;
     const addCount = newItems.length;
+    const editCount = pendingEdits.size;
     const delCount = deleteIds.size;
 
-    if (addCount === 0 && delCount === 0) {
+    if (addCount === 0 && editCount === 0 && delCount === 0) {
       tg.MainButton.hide();
       return;
     }
 
     const parts = [];
     if (addCount) parts.push(`добавить ${addCount}`);
+    if (editCount) parts.push(`изменить ${editCount}`);
     if (delCount) parts.push(`удалить ${delCount}`);
     tg.MainButton.setText(`Отправить боту (${parts.join(", ")})`);
     tg.MainButton.show();
@@ -512,12 +657,82 @@
   document.getElementById('newDate').value = todayLocalISO();
   document.getElementById('newDate').min = todayLocalISO();
 
+  function renderWeekdayPicker() {
+    const wrap = document.getElementById('weekdayPicker');
+    wrap.innerHTML = WEEKDAY_SHORT.map((label, i) =>
+      `<button type="button" class="weekday-btn ${i === selectedWeekday ? 'active' : ''}" data-day="${i}">${label}</button>`
+    ).join('');
+  }
+  renderWeekdayPicker();
+
+  document.getElementById('weekdayPicker').addEventListener('click', (e) => {
+    const btn = e.target.closest('.weekday-btn');
+    if (!btn) return;
+    selectedWeekday = Number(btn.dataset.day);
+    renderWeekdayPicker();
+  });
+
+  function updateScheduleTypeUI() {
+    const kind = document.getElementById('scheduleType').value;
+    document.getElementById('newDate').style.display = kind === 'once' ? '' : 'none';
+    document.getElementById('weekdayPicker').style.display = kind === 'weekly' ? 'flex' : 'none';
+  }
+  document.getElementById('scheduleType').addEventListener('change', updateScheduleTypeUI);
+  updateScheduleTypeUI();
+
+  function buildSchedule(time) {
+    const kind = document.getElementById('scheduleType').value;
+    if (kind === 'once') {
+      const date = document.getElementById('newDate').value || todayLocalISO();
+      return { kind: 'once', date, time };
+    }
+    if (kind === 'weekly') {
+      return { kind: 'weekly', weekday: selectedWeekday, time };
+    }
+    return { kind: 'daily', time };
+  }
+
+  function resetForm() {
+    document.getElementById('newItem').value = '';
+    document.getElementById('newTime').value = '';
+    document.getElementById('newDate').value = todayLocalISO();
+    document.getElementById('scheduleType').value = 'once';
+    selectedWeekday = 0;
+    renderWeekdayPicker();
+    updateScheduleTypeUI();
+  }
+
+  function startEdit(t) {
+    editingId = t.id;
+    document.getElementById('newItem').value = t.text;
+    if (t.mode === 'recurring') {
+      document.getElementById('scheduleType').value = (t.weekday === null || t.weekday === undefined) ? 'daily' : 'weekly';
+      if (t.weekday !== null && t.weekday !== undefined) selectedWeekday = t.weekday;
+      document.getElementById('newTime').value = `${pad2(t.daily_hour)}:${pad2(t.daily_minute)}`;
+    } else {
+      document.getElementById('scheduleType').value = 'once';
+      const d = new Date(t.remind_at * 1000);
+      document.getElementById('newDate').value = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+      document.getElementById('newTime').value = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    }
+    renderWeekdayPicker();
+    updateScheduleTypeUI();
+    document.getElementById('editBanner').style.display = 'flex';
+    document.getElementById('newItem').focus();
+    tg?.HapticFeedback?.impactOccurred('light');
+  }
+
+  function cancelEdit() {
+    editingId = null;
+    document.getElementById('editBanner').style.display = 'none';
+    resetForm();
+  }
+  document.getElementById('cancelEditBtn').addEventListener('click', cancelEdit);
+
   function addItem() {
     const textInput = document.getElementById('newItem');
-    const dateInput = document.getElementById('newDate');
     const timeInput = document.getElementById('newTime');
     const text = textInput.value.trim();
-    const date = dateInput.value || todayLocalISO();
     const time = timeInput.value;
 
     if (!text) {
@@ -530,10 +745,22 @@
       return;
     }
 
-    newItems.push({ text, date, time });
-    textInput.value = '';
-    timeInput.value = '';
-    dateInput.value = todayLocalISO();
+    const schedule = buildSchedule(time);
+
+    if (editingId !== null) {
+      pendingEdits.set(editingId, { id: editingId, text, schedule });
+      editingId = null;
+      document.getElementById('editBanner').style.display = 'none';
+      resetForm();
+      tg?.HapticFeedback?.impactOccurred('light');
+      renderExisting();
+      renderNew();
+      updateMainButton();
+      return;
+    }
+
+    newItems.push({ text, schedule });
+    resetForm();
     tg?.HapticFeedback?.impactOccurred('light');
     renderNew();
     updateMainButton();
@@ -551,7 +778,8 @@
   if (tg) {
     tg.MainButton.onClick(() => {
       tg.sendData(JSON.stringify({
-        new_items: newItems.map(i => ({ text: i.text, datetime: `${i.date}T${i.time}` })),
+        new_items: newItems.map(i => ({ text: i.text, schedule: i.schedule })),
+        edit_items: Array.from(pendingEdits.values()),
         delete_ids: Array.from(deleteIds),
       }));
     });
