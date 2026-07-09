@@ -317,14 +317,15 @@
   }
 
   // KeyboardButton web_app (через который открывается это приложение) НЕ
-  // передаёт initData/initDataUnsafe.user — это ограничение платформы
-  // Telegram (initData доступен только у Web App из меню/inline-кнопки, а
-  // там не работает sendData). Поэтому бот сам передаёт chat_id прямо в
-  // URL кнопки — читаем его отсюда. initDataUnsafe.user — просто запасной
-  // вариант на случай другого способа открытия.
-  const urlParams = new URLSearchParams(window.location.search);
-  const uidFromUrl = urlParams.get('uid');
-  const myUserId = uidFromUrl || tg?.initDataUnsafe?.user?.id;
+  // передаёт initData/initDataUnsafe.user, и Telegram ПОЛНОСТЬЮ заменяет
+  // query-строку и hash-фрагмент URL своими служебными параметрами —
+  // передать туда что-то своё нельзя (проверено на практике). Единственное,
+  // что Telegram не трогает — путь URL. Поэтому бот передаёт chat_id прямо
+  // в пути ссылки (.../telegram-mini-app/<chat_id>), а мы читаем его отсюда.
+  const pathParts = window.location.pathname.split('/').filter(Boolean);
+  const lastPart = pathParts[pathParts.length - 1];
+  const uidFromPath = lastPart && /^\d+$/.test(lastPart) ? lastPart : null;
+  const myUserId = uidFromPath || tg?.initDataUnsafe?.user?.id;
 
   let newItems = [];
   let existingTasks = [];
@@ -373,9 +374,7 @@
       // чтобы случайно не показать чужие напоминания.
       skeleton.style.display = 'none';
       existingTasks = [];
-      // ВРЕМЕННО (диагностика): показываем реальный URL, который получила
-      // страница, чтобы понять, обрезает ли Telegram query-параметры.
-      emptyText.textContent = "DEBUG: " + window.location.href;
+      emptyText.textContent = "Не удалось определить пользователя";
       emptyEl.style.display = "flex";
       return;
     }
