@@ -71,6 +71,24 @@
       "interval_minutes": null,
       "remind_at": 1783566060,
       "done": 1
+    },
+    {
+      "id": 9,
+      "chat_id": 141635775,
+      "text": "Стрижка",
+      "mode": "time",
+      "interval_minutes": null,
+      "remind_at": 1783600200,
+      "done": 0
+    },
+    {
+      "id": 10,
+      "chat_id": 141635775,
+      "text": "Отдать карту охране",
+      "mode": "time",
+      "interval_minutes": null,
+      "remind_at": 1783600500,
+      "done": 0
     }
   ]
 }
