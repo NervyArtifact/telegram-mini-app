@@ -360,17 +360,25 @@
     skeleton.style.display = 'block';
     emptyEl.style.display = 'none';
 
+    if (!myUserId) {
+      // Не удалось определить пользователя Telegram — не показываем НИЧЕГО,
+      // чтобы случайно не показать чужие напоминания.
+      skeleton.style.display = 'none';
+      existingTasks = [];
+      emptyText.textContent = "Не удалось определить пользователя";
+      emptyEl.style.display = "flex";
+      return;
+    }
+
     try {
-      const res = await fetch(`${PROXY_URL}?key=${encodeURIComponent(APP_KEY)}&_=${Date.now()}`, {
+      const res = await fetch(`${PROXY_URL}?key=${encodeURIComponent(APP_KEY)}&uid=${encodeURIComponent(myUserId)}&_=${Date.now()}`, {
         cache: "no-store",
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      existingTasks = (data.tasks || []).filter(t => {
-        if (t.done) return false;
-        if (myUserId && t.chat_id !== myUserId) return false;
-        return true;
-      });
+      // Фильтрация уже сделана на сервере (Worker) по chat_id — здесь только
+      // на всякий случай перепроверяем done, чужие данные сюда не попадают.
+      existingTasks = (data.tasks || []).filter(t => !t.done);
     } catch (err) {
       existingTasks = [];
       skeleton.style.display = 'none';
