@@ -44,6 +44,15 @@
       "interval_minutes": null,
       "remind_at": 1783568460,
       "done": 1
+    },
+    {
+      "id": 6,
+      "chat_id": 220177169,
+      "text": "авыаыв",
+      "mode": "time",
+      "interval_minutes": null,
+      "remind_at": 1783568580,
+      "done": 0
     }
   ]
 }
