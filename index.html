@@ -47,7 +47,7 @@
     background: var(--tg-theme-bg-color);
     color: var(--tg-theme-text-color);
     padding: var(--space-4);
-    padding-bottom: 100px;
+    padding-bottom: 100px; /* место под MainButton */
     -webkit-tap-highlight-color: transparent;
   }
 
@@ -92,7 +92,7 @@
     background: var(--tg-theme-bg-color);
     border-radius: var(--radius-md);
     padding: var(--space-3);
-    font-size: 16px;
+    font-size: 16px; /* >=16px чтобы iOS не зумил при фокусе */
     font-family: inherit;
     color: var(--tg-theme-text-color);
     min-height: 44px;
@@ -295,15 +295,10 @@
 <script>
   const tg = window.Telegram?.WebApp;
 
-  const GH_OWNER = "NervyArtifact";
-  const GH_REPO = "telegram-mini-app";
-  const TASKS_API_URL = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/tasks.json`;
-
-  function decodeBase64Utf8(b64) {
-    const binary = atob(b64.replace(/\n/g, ''));
-    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
-    return new TextDecoder('utf-8').decode(bytes);
-  }
+  // Список задач читается через приватный прокси (Cloudflare Worker), а не
+  // напрямую из GitHub — так данные не видны никому постороннему.
+  const PROXY_URL = "https://withered-bar-77bb.hasan-rustamzoda.workers.dev/";
+  const APP_KEY = "qwertyuiop123456789";
 
   if (tg) {
     tg.ready();
@@ -366,13 +361,11 @@
     emptyEl.style.display = 'none';
 
     try {
-      const res = await fetch(`${TASKS_API_URL}?ref=main&_=${Date.now()}`, {
+      const res = await fetch(`${PROXY_URL}?key=${encodeURIComponent(APP_KEY)}&_=${Date.now()}`, {
         cache: "no-store",
-        headers: { "Accept": "application/vnd.github.v3+json" },
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      const data = JSON.parse(decodeBase64Utf8(json.content));
+      const data = await res.json();
       existingTasks = (data.tasks || []).filter(t => {
         if (t.done) return false;
         if (myUserId && t.chat_id !== myUserId) return false;
@@ -498,6 +491,7 @@
     return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
   }
 
+  // По умолчанию — сегодняшняя дата, чтобы не заставлять выбирать её каждый раз.
   document.getElementById('newDate').value = todayLocalISO();
   document.getElementById('newDate').min = todayLocalISO();
 
